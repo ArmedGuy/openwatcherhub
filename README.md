@@ -12,6 +12,8 @@ The project currently has two main components:
 A modified nginx-s3-gateway docker image configured to download and cache Sentinel satellite bands from the Copernicus S3 repository.
 The local caching helps keep the bandwidth usage down, and enables fast reprocessing of the same bands.
 
+You will need S3 credentials from [Copernicus Dataspace](https://documentation.dataspace.copernicus.eu/APIs/S3.html) to configure the container properly.
+
 # openwatcherhub-api
 This is currently an all-in-one API service that can respond to certain SentinelHub requests.
 It is designed without ANY kind of security, and is only suitable for local installations.
