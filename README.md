@@ -23,6 +23,51 @@ It is also terribly inefficient. It will be rewritten for maturity and only then
  - single input, band selection
  - single output to tiff only
  - only nearest resampling
+ - only sentinel2-l2a products, will add 1 later
+ - no mosaicking, just order by cloud coverage and pray
 
-## Running this locally
+evalscript is implemented by transpiling JavaScript to Python (partially) and executing it through python exec
+
+### Running this locally
 docker compose is the easiest way for now. Make sure to change (and NOT commit) the s3 access key and secret.
+
+### Pointing SentinelHub code to this instance
+Start by pointing the SHConfig base url to the instance:
+
+```python
+config = SHConfig()
+config.sh_client_id = "DENADA"
+config.sh_client_secret = "NOTHING"
+config.sh_token_url = ""
+config.sh_base_url = "http://127.0.0.1:8081"
+```
+
+Then set the URL for the specific data collection for a request:
+```python
+request_true_color = SentinelHubRequest(
+    evalscript=evalscript_true_color,
+    input_data=[
+        SentinelHubRequest.input_data(
+            data_collection=DataCollection.SENTINEL2_L2A.define_from(
+                name="s2", service_url="http://127.0.0.1:8081"
+            ),
+            time_interval=("2023-07-01", "2023-07-20"),
+            other_args={"dataFilter": {"mosaickingOrder": "leastCC"}},
+        )
+    ],
+    responses=[SentinelHubRequest.output_response("default", MimeType.TIFF)],
+    bbox=aoi_bbox,
+    size=aoi_size,
+    config=config,
+)
+```
+
+Because this system doesn't use OAuth2 at all, you must trick SentinelHub python library to work without it.
+
+Add this snippet somewhere at the top of your file/notebook, which patches the SentinelHubSession to not attempt to fetch an auth token.
+
+```python
+from sentinelhub.download.session import SentinelHubSession
+SentinelHubSession._collect_new_token = lambda self: {'access_token': "herpderp", "expires_at": 0}
+```
+
