@@ -19,7 +19,8 @@ It is designed without ANY kind of security, and is only suitable for local inst
 It is also terribly inefficient. It will be rewritten for maturity and only then will performance be taken into account.
 
 ### Currently supported
- - basic evalscript, only older ecmascript support
+ - /api/v1/process endpoint
+ - basic evalscript, only older ecmascript support (no arrow functions etc)
  - single input, band selection
  - single output to tiff only
  - only nearest resampling
@@ -71,3 +72,4 @@ from sentinelhub.download.session import SentinelHubSession
 SentinelHubSession._collect_new_token = lambda self: {'access_token': "herpderp", "expires_at": 0}
 ```
 
+Full example available in `openwatcherhub_test.ipynb`.
