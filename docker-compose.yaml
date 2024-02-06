@@ -1,0 +1,17 @@
+name: openwatcherhub
+services:
+  copernicus-s3-cache:
+    build: ./copernicus-dataspace-s3-cache/
+    environment:
+      AWS_ACCESS_KEY_ID: TODO
+      AWS_SECRET_ACCESS_KEY: TODO
+    ports:
+      - "8080:80"
+    restart: "always"
+  api:
+    build: ./openwatcherhub-api/
+    environment:
+      S3_PROXY_URL: http://copernicus-s3-cache
+    ports:
+      - "8081:80"
+    restart: "always"

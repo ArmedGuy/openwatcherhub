@@ -8,6 +8,7 @@ from rasterio.io import MemoryFile
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import numpy as np
 import geopandas as gpd
+import os
 from shapely.geometry import box
 
 import subprocess
@@ -62,7 +63,7 @@ sample_type_to_dtype = {
 def download_file(url: str, dest: str):
     subprocess.run(["curl", url, "-o", dest])
 
-BASE_URL = "http://192.168.1.101:8080"
+BASE_URL = os.environ.get("S3_PROXY_URL", "http://127.0.0.1")
 IMAGE_FILE_RE = re.compile("<IMAGE_FILE>(.*)</IMAGE_FILE>")
 FILE_EXT = ".jp2"
 
