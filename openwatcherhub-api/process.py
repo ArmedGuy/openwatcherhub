@@ -21,46 +21,6 @@ class ProcessContext:
         self.evaluatePixelFunction = None
         self.temp_dir = ""
 
-band_definitions = {
-    "sentinel-2-l2a": "MTD_MSIL2A.xml",
-}
-
-optical_band = {
-    "src": np.uint16,
-    "convert": lambda x: ((x - 1000) / 10000)
-}
-
-dn_band = {
-    "src": np.uint8,
-    "convert": lambda x: x
-}
-
-band_data_defs = {
-    "sentinel-2-l2a": {
-        "B01": optical_band,
-        "B02": optical_band,
-        "B03": optical_band,
-        "B04": optical_band,
-        "B05": optical_band,
-        "B06": optical_band,
-        "B07": optical_band,
-        "B07": optical_band,
-        "B08": optical_band,
-        "B09": optical_band,
-        "B8A": optical_band,
-        "B09": optical_band,
-        "B11": optical_band,
-        "B12": optical_band,
-        "AOT": optical_band,
-        "SCL": dn_band,
-        "SNW": dn_band,
-        "CLD": dn_band,
-        "CLP": dn_band,
-        "CLM": dn_band
-    }
-}
-resolutions = ["10m", "20m", "60m"]
-
 sample_type_to_dtype = {
     "UINT8": np.uint8,
     "UINT16": np.uint16,
