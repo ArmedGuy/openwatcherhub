@@ -26,7 +26,7 @@ It is also terribly inefficient. It will be rewritten for maturity and only then
  - single input, band selection
  - single output to tiff only
  - only nearest resampling
- - only sentinel2-l2a products, will add 1 later
+ - sentinel2 1c and 2a products, no cloud coverage masks (they show up in code but not computed)
  - no mosaicking, just order by cloud coverage and pray
 
 evalscript is implemented by transpiling JavaScript to Python (partially) and executing it through python exec
