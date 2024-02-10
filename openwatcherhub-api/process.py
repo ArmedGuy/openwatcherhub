@@ -13,6 +13,14 @@ from shapely.geometry import box
 
 import subprocess
 
+class ProcessContext:
+    def __init__(self, req):
+        self.request = req
+        self.setup = {}
+        self.product = None
+        self.evaluatePixelFunction = None
+        self.temp_dir = ""
+
 band_definitions = {
     "sentinel-2-l2a": "MTD_MSIL2A.xml",
 }
@@ -67,65 +75,56 @@ BASE_URL = os.environ.get("S3_PROXY_URL", "http://127.0.0.1")
 IMAGE_FILE_RE = re.compile("<IMAGE_FILE>(.*)</IMAGE_FILE>")
 FILE_EXT = ".jp2"
 
-def download(temp: str, s3base: str, req_type: str, bands: typing.List[str]):
-    folder = BASE_URL + s3base + "/"
-    url = folder + band_definitions[req_type]
+def format_setup(setup):
+    # format input
+    if "input" not in setup:
+        raise ValueError("setup function does not return input data")
+    if isinstance(setup["input"], list):
+        # simple setup
+        if len(setup["input"]) > 0 and isinstance(setup["input"][0], str):
+            setup["input"] = {
+                "bands": setup["input"],
+                "units": "DEFAULT",
+            }
+        elif len(setup["input"]) > 0 and isinstance(setup["input"][0], dict):
+            setup["input"] = setup["input"][0] # we only support one input for now
+        else:
+            raise ValueError("Unknown input format in evalscript")
+        
+        if isinstance(setup["input"]["units"], str):
+            setup["input"]["units"] = [setup["input"]["units"]] * len(setup["input"]["bands"])
+    else:
+        raise ValueError("Invalid input definitions, expect array of string or array of one input object.")
+    if "output" not in setup:
+        raise ValueError("setup function does not return output data")
+    if isinstance(setup["output"], list):
+        raise ValueError("Only one output is currently supported!")
+    setup["output"]["id"] = setup["output"].get("id", "default")
+    setup["output"]["sampleType"] = setup["output"].get("sampleType", "AUTO")
+
+    return setup
+
+
+def download(ctx: ProcessContext, product_instance):
+    bands = ctx.setup["input"]["bands"]
+    folder = BASE_URL + product_instance["S3Path"] + "/"
+    url = folder + ctx.product["granules"]["granuleFile"]
     print(url)
     def_file = requests.get(url).text
     granules = IMAGE_FILE_RE.findall(def_file)
-    matched_granules = []
-
-    if req_type == "sentinel-2-l2a":
-        # handle resolutions, pick the one that has all requested bands
-        for res in resolutions:
-            needed = [f"{band}_{res}" for band in bands]
-            matched_granules = [gran for gran in granules if any(True for need in needed if need in gran)]
-            if len(matched_granules) == len(bands):
-                break
+    matched_granules = ctx.product["granules"]["matching"](bands, granules)
 
     for band in bands:
         granule = [gran for gran in matched_granules if f"_{band}" in gran][0]
         url = folder + granule + FILE_EXT
-        download_file(url, f"{temp}/{band}{FILE_EXT}")
-        subprocess.run(["ls", temp])
-
-class SampleHolder:
-    def __init__(self, bands):
-        self.B01 = 0
-        self.B02 = 0
-        self.B03 = 0
-        self.B04 = 0
-        self.B05 = 0
-        self.B06 = 0
-        self.B07 = 0
-        self.B07 = 0
-        self.B08 = 0
-        self.B09 = 0
-        self.B8A = 0
-        self.B09 = 0
-        self.B11 = 0
-        self.B12 = 0
-        self.AOT = 0
-        self.SCL = 0
-        self.SNW = 0
-        self.CLD = 0
-        self.CLP = 0
-        self.CLM = 0
-        self.bands = bands
-        self.count = len(bands)
-
-    def update(self, vals):
-        for i in range(self.count):
-            self.__dict__[self.bands[i]] = vals[i]
-    
-
+        download_file(url, f"{ctx.temp_dir}/{band}{FILE_EXT}")
 
 
 class PixelProcessor:
-    def __init__(self, pixelFn, bands):
+    def __init__(self, pixelFn, sampleHolder, bands):
         self.pixelFn = pixelFn
         self.bands = bands
-        self.sample = SampleHolder(bands)
+        self.sample = sampleHolder(bands)
 
     def process(self, slice):
         self.sample.update(slice)
@@ -136,22 +135,22 @@ def _get_features(gdf):
     import json
     return [json.loads(gdf.to_json())['features'][0]['geometry']]
 
-def rerender(temp: str, req, setup, evalPx=None):
-    points = req.input.bounds.bbox
+def rerender(ctx):
+    points = ctx.request.input.bounds.bbox
     bbox = box(points[0], points[1], points[2], points[3])
     geo = gpd.GeoDataFrame({'geometry': bbox}, index=[0])
     dst_crs = 'EPSG:4326'
     geo.crs = dst_crs
 
-    bands = setup["input"]
+    bands = ctx.setup["input"]["bands"]
     srcs = [
-        rasterio.open(temp + "/" + band + FILE_EXT, driver='JP2OpenJPEG')
+        rasterio.open(ctx.temp_dir + "/" + band + FILE_EXT, driver='JP2OpenJPEG')
         for band in bands
     ]
-    count = setup["output"]["bands"]
-    sampleType = setup['output'].get("sampleType", "AUTO")
+    count = ctx.setup["output"]["bands"]
+    sampleType = ctx.setup['output']["sampleType"]
     wanted_dtype = sample_type_to_dtype[sampleType]
-    output_loc = temp + "/" + "output.tiff"
+    output_loc = ctx.temp_dir + "/" + "output.tiff"
 
     # project to WSG84
     unproj = srcs[0]
@@ -174,7 +173,6 @@ def rerender(temp: str, req, setup, evalPx=None):
             for i in range(0, len(bands)):
                 band = bands[i]
                 dest = np.zeros(band_shp)
-                print("reprojecting ", band)
                 reproject(
                     source=rasterio.band(srcs[i], 1),
                     destination=dest,
@@ -184,25 +182,31 @@ def rerender(temp: str, req, setup, evalPx=None):
                     dst_crs=dst_crs,
                     resampling=Resampling.nearest)
                 # convert band data to common format
-                print("reformatting band")
-                band_def = band_data_defs[req.input.data[0].type][band]
-                dest = band_def["convert"](dest.astype(np.float32))
+                band_def = ctx.product["bands"][band]
+                input_unit = ctx.setup["input"]["units"][i]
+                input_unit = band_def["defaultUnit"] if input_unit == "DEFAULT" or input_unit not in band_def["units"] else input_unit
+                dest = band_def["units"][input_unit]["convert"](dest.astype(np.float32))
+
                 dst.write(dest, i+1)
         with proj_bands.open() as src:
             data, transform = rasterio.mask.mask(src, shapes=_get_features(geo), all_touched=True, crop=True, filled=True)
             data = data.astype(np.float32)
             # do per-pixel preprocessing on masked data
-            if evalPx:
+            if ctx.evaluatePixelFunction:
                 print("running evalscript")
-                px = PixelProcessor(evalPx, bands)
+                px = PixelProcessor(
+                    ctx.evaluatePixelFunction,
+                    ctx.product["sampleHolder"],
+                    bands
+                )
                 data = np.apply_along_axis(px.process, 0, data)
             # write output
             with rasterio.open(
                 output_loc, 
                 "w", 
                 driver="Gtiff", 
-                width=req.output.width, 
-                height=req.output.height, 
+                width=ctx.request.output.width, 
+                height=ctx.request.output.height, 
                 count=count, 
                 crs=dst_crs, 
                 transform=transform, 

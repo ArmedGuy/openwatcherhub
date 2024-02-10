@@ -2,15 +2,12 @@ import typing
 import requests
 
 from models import ProcessRequest
+from process import ProcessContext
 
 BASE_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
 
 
-type_to_search_filter = {
-    "sentinel-2-l1c":  ["Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI1C')"],
-    "sentinel-2-l2a": ["Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI2A')"]
-}
-
+    #"sentinel-2-l1c":  ["Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI1C')"]
 mosaicking_order_to_orderby = {
     "mostRecent": "ContentDate/Start desc",
     "leastRecent": "ContentDate/Start asc",
@@ -39,13 +36,11 @@ def _between(start_date: str, end_date: str) -> typing.List[str]:
         f"ContentDate/Start lt {end_date}",
     ]
 
-def search(req: ProcessRequest):
-    baseFilters = _bbox(req.input.bounds.bbox)
+def search(ctx: ProcessContext):
+    baseFilters = _bbox(ctx.request.input.bounds.bbox)
 
-    for data in req.input.data:
-        if data.type not in type_to_search_filter:
-            continue
-        filters =  type_to_search_filter[data.type] + baseFilters
+    for data in ctx.request.input.data:
+        filters =  ctx.product["odata"]["searchTerms"] + baseFilters
         filters += _between(data.dataFilter.timeRange.from_, data.dataFilter.timeRange.to)
         filters += _maxCloudCover(data.dataFilter.maxCloudCoverage)
 
