@@ -6,8 +6,6 @@ from process import ProcessContext
 
 BASE_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
 
-
-    #"sentinel-2-l1c":  ["Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI1C')"]
 mosaicking_order_to_orderby = {
     "mostRecent": "ContentDate/Start desc",
     "leastRecent": "ContentDate/Start asc",
