@@ -4,13 +4,17 @@ SENTINEL_2_2A = "sentinel-2-l2a"
 import numpy as np
 
 class SampleHolder:
-    def __init__(self, bands):
+    def __init__(self, bands, vectorize=False):
         self.bands = bands
         self.count = len(bands)
+        self.vectorize = vectorize
 
     def update(self, vals):
         for i in range(self.count):
-            self.__dict__[self.bands[i]] = vals[i]
+            if self.vectorize:
+                self.__dict__[self.bands[i]] = vals[i, :, :]
+            else:
+                self.__dict__[self.bands[i]] = vals[i]
 
 # Sentinel 2 1C product
             
@@ -35,9 +39,9 @@ def sentinel_2_1c_matching(bands, granules):
     return []
 
 class S2L1CSampleHolder(SampleHolder):
-    def __init__(self, bands):
-        super().__init__(bands)
-        self.B01 = 0
+    def __init__(self, bands, vectorize):
+        super().__init__(bands, vectorize)
+        """self.B01 = 0
         self.B02 = 0
         self.B03 = 0
         self.B04 = 0
@@ -52,7 +56,7 @@ class S2L1CSampleHolder(SampleHolder):
         self.B11 = 0
         self.B12 = 0
         self.CLP = 0
-        self.CLM = 0
+        self.CLM = 0"""
 
 # Sentinel 2 2A product
 
@@ -89,9 +93,9 @@ def sentinel_2_2a_matching(bands, granules):
     return []
         
 class S2L2ASampleHolder(SampleHolder):
-    def __init__(self, bands):
-        super().__init__(bands)
-        self.B01 = 0
+    def __init__(self, bands, vectorize):
+        super().__init__(bands, vectorize)
+        """self.B01 = 0
         self.B02 = 0
         self.B03 = 0
         self.B04 = 0
@@ -110,7 +114,7 @@ class S2L2ASampleHolder(SampleHolder):
         self.SNW = 0
         self.CLD = 0
         self.CLP = 0
-        self.CLM = 0
+        self.CLM = 0"""
 
 
 SUPPORTED_PRODUCTS = {

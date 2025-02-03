@@ -2,6 +2,7 @@ from pyjsparser import parse
 import copy
 import json
 import math
+import numpy as np
 
 
 ### BUILTINS
@@ -35,6 +36,7 @@ class ColorMapVisualizer:
             [0.9, 0x006600]
         ])
 
+    # TODO: vectorize
     def process(self, value):
         cur = self.map[0]
         for val in self.map:
@@ -74,6 +76,31 @@ class ColorGradientVisualizer:
         self.denom = maxVal - minVal
 
     def process(self, val):
+        if isinstance(val, np.ndarray):
+            return self._process_vec(val)
+        else:
+            return self._process_val(val)
+
+    def _process_vec(self, val):
+        rescaled_val = 1 - ((val - self.minVal) / self.denom)
+        # turn result into 3d array
+        output = np.stack([rescaled_val, rescaled_val, rescaled_val])
+        int_from = self.pairs[0]
+        int_to = self.pairs[0]
+        for pair in self.pairs:
+            int_to = pair
+            clr_from = unpack(int_from[1])
+            clr_to = unpack(int_to[1])
+            fraction = np.where(int_to[0] == int_from[0], 1, (int_from[0] - rescaled_val) / (int_from[0] - int_to[0]) )
+            output = np.where((rescaled_val > pair[0]) & (rescaled_val <= int_from[0]), [
+                (clr_to[0] - clr_from[0]) * fraction + clr_from[0],
+                (clr_to[1] - clr_from[1]) * fraction + clr_from[1],
+                (clr_to[2] - clr_from[2]) * fraction + clr_from[2],
+            ], output)
+            int_from = pair
+        return output
+
+    def _process_val(self, val):
         rescaled_val = 1 - ((val - self.minVal) / self.denom)
         int_from = self.pairs[0]
         int_to = self.pairs[0]
@@ -104,24 +131,12 @@ class ColorGradientVisualizer:
     @classmethod
     def createRedTemperature(cls, minVal, maxVal):
         return ColorGradientVisualizer(redTemperature, minVal, maxVal)
-    
-
-class FakeObj:
-    @classmethod
-    def createWhiteGreen(cls, frm, to):
-        return FakeObj()
-    
-    def process(self, val):
-        return self
-    
-    def push(self, val):
-        pass
-
 
 SCRIPT_ENV = {
     "ColorGradientVisualizer": ColorGradientVisualizer,
     "ColorMapVisualizer": ColorMapVisualizer,
     "Math": math,
+    "Vec": np,
 }
 
 class ParseCtx:
@@ -131,10 +146,10 @@ class ParseCtx:
 
 def compile(script: str):
     prg = parse(script)
-    print(json.dumps(prg, indent=2))
+    #print(json.dumps(prg, indent=2))
 
     py_src = parse_ast(prg, ParseCtx())
-    print(py_src)
+    #print(py_src)
 
     try:
         module_env = {**SCRIPT_ENV}
