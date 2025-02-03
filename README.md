@@ -18,11 +18,12 @@ You will need S3 credentials from [Copernicus Dataspace](https://documentation.d
 This is currently an all-in-one API service that can respond to certain SentinelHub requests.
 It is designed without ANY kind of security, and is only suitable for local installations.
 
-It is also terribly inefficient. It will be rewritten for maturity and only then will performance be taken into account.
+It is also terribly inefficient (although now less inefficient). It will be rewritten into a proper rendering pipeline and only then will performance be taken into account.
 
 ### Currently supported
  - /api/v1/process endpoint
  - basic evalscript, only older ecmascript support (no arrow functions etc)
+   - supports numpy vectorized functions
  - single input, band selection
  - single output to tiff only
  - only nearest resampling
@@ -30,6 +31,11 @@ It is also terribly inefficient. It will be rewritten for maturity and only then
  - no mosaicking, just order by cloud coverage and pray
 
 evalscript is implemented by transpiling JavaScript to Python (partially) and executing it through python exec
+
+### evalscript with numpy
+To use numpy in evalscript, the directive `//VECTORIZE` must be present at the top of the file after version.
+After that, each band exposed in a sample will represent ALL pixels for that band, and vectorized math can be used to quickly process the bands.
+Additionally, a new module is exposed called Vec, which contains all the functions supported by numpy for vectorized computations.
 
 ### Running this locally
 docker compose is the easiest way for now. Make sure to change (and NOT commit) the s3 access key and secret.

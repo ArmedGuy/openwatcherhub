@@ -12,7 +12,6 @@ import geopandas as gpd
 import os
 from shapely.geometry import box
 import time
-import multiprocessing
 
 
 import subprocess
@@ -38,6 +37,10 @@ def download_file(url: str, dest: str):
 BASE_URL = os.environ.get("S3_PROXY_URL", "http://127.0.0.1")
 IMAGE_FILE_RE = re.compile("<IMAGE_FILE>(.*)</IMAGE_FILE>")
 FILE_EXT = ".jp2"
+
+GTIFF_DRIVER = "Gtiff"
+DEST_CRS = 'EPSG:4326'
+
 
 def format_setup(setup):
     # format input
@@ -97,41 +100,6 @@ class PixelProcessor:
     def process(self, slice):
         self.sample.update(slice)
         return self.pixelFn(self.sample)
-    
-def unpacking_apply_along_axis(all_args):
-    """
-    Like numpy.apply_along_axis(), but with arguments in a tuple
-    instead.
-
-    This function is useful with multiprocessing.Pool().map(): (1)
-    map() only handles functions that take a single argument, and (2)
-    this function can generally be imported from a module, as required
-    by map().
-    """
-    (func1d, axis, arr, args, kwargs) = all_args
-    return np.apply_along_axis(func1d, axis, arr, *args, **kwargs)
-    
-def parallel_apply_along_axis(func1d, axis, arr, *args, **kwargs):
-    """
-    Like numpy.apply_along_axis(), but takes advantage of multiple
-    cores.
-    """        
-    # Effective axis where apply_along_axis() will be applied by each
-    # worker (any non-zero axis number would work, so as to allow the use
-    # of `np.array_split()`, which is only done on axis 0):
-    effective_axis = 1 if axis == 0 else axis
-    if effective_axis != axis:
-        arr = arr.swapaxes(axis, effective_axis)
-
-    # Chunks for the mapping (only a few chunks):
-    chunks = [(func1d, effective_axis, sub_arr, args, kwargs)
-              for sub_arr in np.array_split(arr, multiprocessing.cpu_count())]
-
-    multiprocessing.set_start_method('fork')
-    with multiprocessing.Pool() as pool:
-        individual_results = pool.map(unpacking_apply_along_axis, chunks)
-
-    return np.concatenate(individual_results)
 
 
 def _get_features(gdf):
@@ -141,31 +109,28 @@ def _get_features(gdf):
 
 
 def rerender_band(ctx, band, band_idx):
-    with rasterio.Env(CPL_DEBUG=True, GDAL_NUM_THREADS=32):
+    with rasterio.Env(GDAL_NUM_THREADS=32):
         points = ctx.request.input.bounds.bbox
         bbox = box(points[0], points[1], points[2], points[3])
         geo = gpd.GeoDataFrame({'geometry': bbox}, index=[0])
-        dst_crs = 'EPSG:4326'
-        geo.crs = dst_crs
+        geo.crs = DEST_CRS
 
         src = rasterio.open(ctx.temp_dir + "/" + band + FILE_EXT, driver='JP2OpenJPEG')
-        sampleType = ctx.setup['output']["sampleType"]
-        wanted_dtype = sample_type_to_dtype[sampleType]
         band_output_loc = ctx.temp_dir + "/" + band + "_projmask.tiff"
 
         # project to WSG84
         unproj = src
         transform, new_width, new_height = calculate_default_transform(
-            unproj.crs, dst_crs, unproj.width, unproj.height, *unproj.bounds)
+            unproj.crs, DEST_CRS, unproj.width, unproj.height, *unproj.bounds)
         kwargs = unproj.meta.copy()
         kwargs.update({
-            'crs': dst_crs,
+            'crs': DEST_CRS,
             'transform': transform,
             'width': new_width,
             'height': new_height,
             'count': 1,
             'dtype': np.float32,
-            'driver': 'Gtiff'
+            'driver': GTIFF_DRIVER
         })
 
         with MemoryFile() as proj_band:
@@ -178,7 +143,7 @@ def rerender_band(ctx, band, band_idx):
                     src_transform=unproj.transform,
                     src_crs=unproj.crs,
                     dst_transform=transform,
-                    dst_crs=dst_crs,
+                    dst_crs=DEST_CRS,
                     resampling=Resampling.nearest,
                     num_threads=32,
                     warp_mem_limit=256)
@@ -197,11 +162,11 @@ def rerender_band(ctx, band, band_idx):
                 with rasterio.open(
                     band_output_loc, 
                     "w", 
-                    driver="Gtiff", 
+                    driver=GTIFF_DRIVER, 
                     width=ctx.request.output.width, 
                     height=ctx.request.output.height, 
                     count=1, 
-                    crs=dst_crs, 
+                    crs=DEST_CRS, 
                     transform=transform, 
                     dtype=np.float32
                 ) as output:
@@ -209,7 +174,7 @@ def rerender_band(ctx, band, band_idx):
                     output.close()
                     print("wrote file to", band_output_loc)
 
-async def async_rerender(ctx, vectorized_evalscript=False):
+async def render(ctx, vectorized_evalscript=False):
     bands = ctx.setup["input"]["bands"]
     loop = asyncio.get_event_loop()
     tasks = []
@@ -222,7 +187,7 @@ async def async_rerender(ctx, vectorized_evalscript=False):
     print("projection and masking took ", time.time() - start_proj_mask_time, " seconds")
     # reopen all processed and masked bands and run processing on it
     srcs = [
-        rasterio.open(ctx.temp_dir + "/" + band + "_projmask.tiff", driver='Gtiff')
+        rasterio.open(ctx.temp_dir + "/" + band + "_projmask.tiff", driver=GTIFF_DRIVER)
         for band in bands
     ]
     start_pixel_time = time.time()
@@ -252,17 +217,16 @@ async def async_rerender(ctx, vectorized_evalscript=False):
 
         # everything is now projected to WSG84
         unproj = srcs[0]
-        dst_crs = 'EPSG:4326'
         transform, _, _ = calculate_default_transform(
-            unproj.crs, dst_crs, unproj.width, unproj.height, *unproj.bounds)
+            unproj.crs, DEST_CRS, unproj.width, unproj.height, *unproj.bounds)
         with rasterio.open(
             output_loc, 
             "w", 
-            driver="Gtiff", 
+            driver=GTIFF_DRIVER, 
             width=ctx.request.output.width, 
             height=ctx.request.output.height, 
             count=count, 
-            crs=dst_crs, 
+            crs=DEST_CRS, 
             transform=transform, 
             dtype=wanted_dtype
         ) as output:
