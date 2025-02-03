@@ -2,9 +2,7 @@ name: openwatcherhub
 services:
   copernicus-s3-cache:
     build: ./copernicus-dataspace-s3-cache/
-    environment:
-      AWS_ACCESS_KEY_ID: "NB0JBDBDWYIT6D8JUIB6"
-      AWS_SECRET_ACCESS_KEY: "McNGcHrQm3en0pwLHFwoykJLswrCqAkELrrn1rhZ"
+    env_file: prod.env
     restart: "always"
     volumes:
       - cache:/var/cache/nginx

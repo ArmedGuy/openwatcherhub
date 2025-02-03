@@ -21,7 +21,7 @@ from models import ProcessRequest
 from search import search
 from evalscript import compile
 
-from process import format_setup, download, async_rerender, ProcessContext
+from process import format_setup, download, render, ProcessContext
 
 from products import SUPPORTED_PRODUCTS
 
@@ -59,6 +59,6 @@ async def process(req: ProcessRequest):
     # download the bands for all of these
     await download(ctx, best)
 
-    await async_rerender(ctx, vectorized_evalscript)
+    await render(ctx, vectorized_evalscript)
     #rerender(ctx)
     return FileResponse(ctx.temp_dir + "/" + "output.tiff")

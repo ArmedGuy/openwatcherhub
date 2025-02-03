@@ -1,3 +1,4 @@
 s3-settings.env
 env/
 __pycache__/
+prod.env

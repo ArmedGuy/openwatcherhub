@@ -14,6 +14,8 @@ The local caching helps keep the bandwidth usage down, and enables fast reproces
 
 You will need S3 credentials from [Copernicus Dataspace](https://documentation.dataspace.copernicus.eu/APIs/S3.html) to configure the container properly.
 
+Copy example.env to prod.env and fill in the values from their website.
+
 # openwatcherhub-api
 This is currently an all-in-one API service that can respond to certain SentinelHub requests.
 It is designed without ANY kind of security, and is only suitable for local installations.
